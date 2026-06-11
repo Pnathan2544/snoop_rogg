@@ -20,8 +20,6 @@ interface Props {
 }
 
 export function RateLimitChart({ data, loading }: Props) {
-  if (loading) return <ChartSkeleton />;
-
   const chartData = useMemo(() => {
     const bucketMap = new Map<string, { time: string; count429: number }>();
 
@@ -40,6 +38,8 @@ export function RateLimitChart({ data, loading }: Props) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, v]) => v);
   }, [data]);
+
+  if (loading) return <ChartSkeleton />;
 
   if (chartData.length === 0) {
     return (

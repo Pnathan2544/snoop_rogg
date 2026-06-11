@@ -20,8 +20,6 @@ interface Props {
 }
 
 export function LatencyChart({ data, loading }: Props) {
-  if (loading) return <ChartSkeleton />;
-
   const chartData = useMemo(() => {
     const bucketMap = new Map<string, { time: string; totalLatency: number; count: number }>();
 
@@ -45,6 +43,8 @@ export function LatencyChart({ data, loading }: Props) {
         avgLatencyMs: v.count > 0 ? Math.round(v.totalLatency / v.count) : 0,
       }));
   }, [data]);
+
+  if (loading) return <ChartSkeleton />;
 
   if (chartData.length === 0) {
     return (

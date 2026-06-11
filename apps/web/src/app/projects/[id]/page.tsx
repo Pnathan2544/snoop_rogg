@@ -11,7 +11,6 @@ import {
   fetchLatencyMetrics,
   fetchTopEndpoints,
 } from '@/lib/api';
-import { getDefaultTimeRange } from '@/lib/utils';
 import { VolumeChart } from '@/components/charts/VolumeChart';
 import { ErrorRateChart } from '@/components/charts/ErrorRateChart';
 import { RateLimitChart } from '@/components/charts/RateLimitChart';

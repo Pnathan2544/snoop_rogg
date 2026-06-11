@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { apiEvents, minuteAggregates, NewApiEvent } from '@rate-snoop/db';
+import { apiEvents, NewApiEvent } from '@rate-snoop/db';
 import { IngestEventDto } from '@rate-snoop/types';
 import { sql, and, eq, inArray } from 'drizzle-orm';
 

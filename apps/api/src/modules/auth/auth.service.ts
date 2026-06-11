@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
-import { ingestTokens, projects } from '@rate-snoop/db';
-import { eq, and } from 'drizzle-orm';
+import { ingestTokens } from '@rate-snoop/db';
+import { eq } from 'drizzle-orm';
 import * as crypto from 'crypto';
 
 @Injectable()

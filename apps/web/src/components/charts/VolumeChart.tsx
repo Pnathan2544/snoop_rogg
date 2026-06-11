@@ -7,7 +7,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
 } from 'recharts';
 import { VolumeDataPoint } from '@rate-snoop/types';
@@ -20,11 +19,7 @@ interface Props {
   loading: boolean;
 }
 
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'];
-
 export function VolumeChart({ data, loading }: Props) {
-  if (loading) return <ChartSkeleton />;
-
   // Aggregate by time bucket, sum across providers/endpoints
   const chartData = useMemo(() => {
     const bucketMap = new Map<string, Record<string, number>>();
@@ -42,6 +37,8 @@ export function VolumeChart({ data, loading }: Props) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, v]) => v);
   }, [data]);
+
+  if (loading) return <ChartSkeleton />;
 
   if (chartData.length === 0) {
     return <EmptyChart message="No data for the selected time range." />;

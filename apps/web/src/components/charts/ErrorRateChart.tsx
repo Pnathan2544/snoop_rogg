@@ -21,8 +21,6 @@ interface Props {
 }
 
 export function ErrorRateChart({ data, loading }: Props) {
-  if (loading) return <ChartSkeleton />;
-
   const chartData = useMemo(() => {
     const bucketMap = new Map<string, { time: string; errorRate: number; errors: number; requests: number }>();
 
@@ -59,6 +57,8 @@ export function ErrorRateChart({ data, loading }: Props) {
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([, v]) => ({ ...v, errorRate: parseFloat(v.errorRate.toFixed(1)) }));
   }, [data]);
+
+  if (loading) return <ChartSkeleton />;
 
   if (chartData.length === 0) {
     return (
