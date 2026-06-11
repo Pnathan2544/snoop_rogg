@@ -27,6 +27,7 @@ A real-time API rate limit and performance monitoring system. Track request volu
                                          │  minute_aggs)    │
                                          └──────────────────┘
 ```
+NOTE: The API (ingest + metrics) probably writes raw events to PostgreSQL? The diagram doesn't show that arrow.
 
 ## Quick Start (Development)
 
