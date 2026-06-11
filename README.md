@@ -73,6 +73,9 @@ This starts:
 - **API**: http://localhost:3001
 - **Worker**: http://localhost:3002
 
+NOTE: Docker container use Port 3000. That's why you come across an issue and use unusual port (3001/3002)
+I lacked understanding of Docker Desktop during that time.
+
 ## Full Stack with Docker
 
 ```bash
