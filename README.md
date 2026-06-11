@@ -3,7 +3,8 @@
 A real-time API rate limit and performance monitoring system. Track request volume, error rates, 429s (rate limits), and latency across your API providers.
 
 11/6/2026 -> I am actively reviewing this project - Nat
-
+11/6/2026 23.41? -> Remember about Kintsugi, trying to fix a plate with gold? Don't hide failed GHA. It's a part of learning 
+                    I see now how AI-generated code smells, and I need to fix things up
 ## Architecture
 
 ```
