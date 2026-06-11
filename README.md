@@ -49,6 +49,8 @@ pnpm install
 docker compose -f docker-compose.dev.yml up -d
 ```
 
+NOTE: It's better to use Makefile to batch multiple commands together
+
 ### 3. Run database migrations
 
 ```bash
