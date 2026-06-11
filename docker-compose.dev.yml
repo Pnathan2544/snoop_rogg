@@ -1,5 +1,3 @@
-version: '3.9'
-
 # Development compose - starts only postgres and redis
 # Run apps locally with: pnpm dev
 

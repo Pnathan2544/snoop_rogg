@@ -31,4 +31,4 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/apps/worker/node_modules ./apps/worker/node_modules
 
 EXPOSE 3002
-CMD ["node", "dist/main"]
+CMD ["node", "dist/apps/worker/src/main"]
