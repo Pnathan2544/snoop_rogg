@@ -2,8 +2,6 @@
 
 Rate Snoop is a near-real-time observability pipeline for API traffic. It accepts request telemetry asynchronously and presents request volume, error rate, HTTP 429, latency, and top-endpoint metrics in a Next.js dashboard.
 
-The project is deliberately compact, but its critical path exercises real distributed-systems concerns: asynchronous acceptance, at-least-once delivery, idempotency, transactional aggregation, backpressure, dependency readiness, and eventual consistency.
-
 ## Architecture
 
 ```mermaid
@@ -16,7 +14,7 @@ flowchart LR
     API -->|JSON| Web[Next.js dashboard]
 ```
 
-The API does **not** persist accepted events. It validates and enqueues them. The worker owns persistence and minute-level aggregation, so `202 Accepted` means the batch reached Redis—not that it is already visible in PostgreSQL or the dashboard.
+The API does **not** persist accepted events. It validates and enqueues them. The worker owns persistence and minute-level aggregation, so `202 Accepted` means the batch reached Redis, not that it is already visible in PostgreSQL or the dashboard.
 
 See [Design notes](docs/design-notes.md) for invariants, delivery semantics, failure analysis, and scaling trade-offs.
 
