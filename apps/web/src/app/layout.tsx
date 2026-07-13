@@ -1,14 +1,11 @@
 import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 import { Navbar } from '@/components/Navbar';
 
-const inter = Inter({ subsets: ['latin'] });
-
 export const metadata: Metadata = {
   title: 'Rate Snoop - API Rate Monitor',
-  description: 'Monitor API rate limits, latency, and error rates in real-time',
+  description: 'Monitor API rate limits, latency, and error rates in near real time',
 };
 
 export default function RootLayout({
@@ -18,7 +15,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body>
         <Providers>
           <div className="min-h-screen bg-slate-50">
             <Navbar />

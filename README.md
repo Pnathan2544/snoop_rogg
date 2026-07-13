@@ -1,240 +1,251 @@
-# Rate Snoop - API Rate Monitoring Pipeline
+# Rate Snoop
 
-A real-time API rate limit and performance monitoring system. Track request volume, error rates, 429s (rate limits), and latency across your API providers.
+Rate Snoop is a near-real-time observability pipeline for API traffic. It accepts request telemetry asynchronously and presents request volume, error rate, HTTP 429, latency, and top-endpoint metrics in a Next.js dashboard.
 
-11/6/2026 -> I am actively reviewing this project - Nat
-11/6/2026 23.41? -> Remember about Kintsugi, trying to fix a plate with gold? Don't hide failed GHA. It's a part of learning 
-                    I see now how AI-generated code smells, and I need to fix things up
+The project is deliberately compact, but its critical path exercises real distributed-systems concerns: asynchronous acceptance, at-least-once delivery, idempotency, transactional aggregation, backpressure, dependency readiness, and eventual consistency.
+
 ## Architecture
 
+```mermaid
+flowchart LR
+    Client[Telemetry client] -->|Bearer token + batch| API[NestJS API]
+    API -->|Enqueue; HTTP 202| Queue[(BullMQ / Redis)]
+    Queue -->|Retryable job| Worker[NestJS worker]
+    Worker -->|Atomic insert + aggregate| DB[(PostgreSQL)]
+    DB -->|Metrics queries| API
+    API -->|JSON| Web[Next.js dashboard]
 ```
-┌─────────────┐     ┌──────────────┐     ┌────────────────┐
-│  Next.js    │────▶│  NestJS API  │────▶│  BullMQ Queue  │
-│  Dashboard  │     │  (ingest +   │     │  (Redis)       │
-│  (port 3000)│     │   metrics)   │     └───────┬────────┘
-└─────────────┘     │  (port 3001) │             │
-                    └──────────────┘             │
-                           │                     ▼
-                           │             ┌──────────────────┐
-                           └────────────▶│  NestJS Worker   │
-                                         │  (aggregation)   │
-                                         │  (port 3002)     │
-                                         └────────┬─────────┘
-                                                  │
-                                                  ▼
-                                         ┌──────────────────┐
-                                         │   PostgreSQL     │
-                                         │  (api_events +   │
-                                         │  minute_aggs)    │
-                                         └──────────────────┘
-```
-NOTE: The API (ingest + metrics) probably writes raw events to PostgreSQL? The diagram doesn't show that arrow.
 
-## Quick Start (Development)
+The API does **not** persist accepted events. It validates and enqueues them. The worker owns persistence and minute-level aggregation, so `202 Accepted` means the batch reached Redis—not that it is already visible in PostgreSQL or the dashboard.
+
+See [Design notes](docs/design-notes.md) for invariants, delivery semantics, failure analysis, and scaling trade-offs.
+
+## What is implemented
+
+- Bearer ingest tokens stored as SHA-256 hashes.
+- Batch validation for 1–500 events.
+- BullMQ jobs with three attempts and exponential backoff.
+- Backlog-based admission control at 10,000 pending jobs.
+- PostgreSQL raw-event storage and minute aggregates.
+- Transactional raw insertion plus aggregate upsert.
+- Concurrency-safe deduplication for events carrying `eventId`.
+- Endpoint normalization for ID-like path segments.
+- Request-weighted latency and error-rate calculations.
+- Separate liveness and dependency-aware readiness probes.
+- Docker Compose development and complete-stack configurations.
+- CI for lint, type-check, tests, builds, container builds, and smoke checks.
+
+## Technology
+
+| Layer | Technology | Responsibility |
+|---|---|---|
+| Dashboard | Next.js 14, React Query, Recharts | Project management and metrics visualization |
+| API | NestJS, class-validator | Authentication, validation, enqueueing, metrics reads |
+| Queue | BullMQ 5, Redis | Buffering, retries, distributed job delivery |
+| Worker | NestJS, BullMQ WorkerHost | Raw persistence and minute aggregation |
+| Database | PostgreSQL, Drizzle ORM | Projects, token hashes, events, aggregates |
+| Tooling | pnpm, Turborepo, Docker Compose, Vitest | Workspace orchestration and verification |
+
+## Quick start
 
 ### Prerequisites
-- Node.js 20+
-- pnpm 9+
-- Docker & Docker Compose
 
-### 1. Clone and install
+- Node.js 20+
+- pnpm 9
+- Docker with Docker Compose
+
+### Development mode
 
 ```bash
-cd rate_snoop
+git clone https://github.com/Pnathan2544/snoop_rogg.git
+cd snoop_rogg
 cp .env.example .env
 pnpm install
-```
-
-### 2. Start infrastructure (postgres + redis)
-
-```bash
-docker compose -f docker-compose.dev.yml up -d
-```
-
-NOTE: It's better to use Makefile to batch multiple commands together
-
-### 3. Run database migrations
-
-```bash
-# Option A: using psql directly
-psql postgresql://postgres:postgres@localhost:5432/rate_snoop \
-  -f packages/db/drizzle/0000_initial_schema.sql
-
-# Option B: using drizzle push (pushes schema to db)
-pnpm --filter @rate-snoop/db db:push
-```
-
-### 4. Start all apps in development mode
-
-```bash
+pnpm infra:up
 pnpm dev
 ```
 
-This starts:
-- **Web**: http://localhost:3000
-- **API**: http://localhost:3001
-- **Worker**: http://localhost:3002
+The development stack exposes:
 
-NOTE: Docker container use Port 3000. That's why you come across an issue and use unusual port (3001/3002)
-I lacked understanding of Docker Desktop during that time.
+| Service | Address |
+|---|---|
+| Dashboard | <http://localhost:3000> |
+| API | <http://localhost:3001> |
+| Worker probes | <http://localhost:3002/health> |
+| PostgreSQL | `localhost:5434` |
+| Redis | `localhost:6379` |
 
-## Full Stack with Docker
+For a new PostgreSQL volume, the initial schema is applied automatically from `packages/db/drizzle/0000_initial_schema.sql`.
+
+Stop the development infrastructure with:
 
 ```bash
-docker compose up --build
+pnpm infra:down
 ```
 
-All services will start. The web dashboard will be at http://localhost:3000.
-
-## Testing the Pipeline
-
-### Using the seed script
+### Complete Docker stack
 
 ```bash
-# Start the seed script (auto-creates a project + token)
-pnpm --filter @rate-snoop/api seed
+pnpm stack:up
+```
 
-# Or with an existing project
+This builds and starts PostgreSQL, Redis, the API, worker, and dashboard. The web service waits for the API readiness probe before starting.
+
+```bash
+pnpm stack:down
+```
+
+## Generate demo traffic
+
+With the applications running:
+
+```bash
+pnpm --filter @rate-snoop/api seed
+```
+
+The seed script creates a project and token, then sends a batch every second for 60 seconds. Configuration can be overridden:
+
+```bash
+DURATION=15 BATCH_SIZE=10 pnpm --filter @rate-snoop/api seed
 PROJECT_ID=<uuid> TOKEN=<token> pnpm --filter @rate-snoop/api seed
 ```
 
-### Manual curl example
+On PowerShell:
+
+```powershell
+$env:DURATION = "15"
+$env:BATCH_SIZE = "10"
+pnpm --filter @rate-snoop/api seed
+```
+
+Open the generated project in the dashboard. Data becomes visible after the worker processes the job and the dashboard performs its next 30-second poll.
+
+## Manual ingestion
+
+Create a project:
 
 ```bash
-# 1. Create a project
 curl -X POST http://localhost:3001/projects \
   -H "Content-Type: application/json" \
-  -d '{"name": "My Project"}'
+  -d '{"name":"Demo"}'
+```
 
-# 2. Create an ingest token
+Create an ingest token using the returned project ID:
+
+```bash
 curl -X POST http://localhost:3001/projects/<project-id>/tokens \
   -H "Content-Type: application/json" \
-  -d '{"name": "Dev Token"}'
+  -d '{"name":"Local client"}'
+```
 
-# 3. Ingest events (use the token from step 2)
+Submit telemetry using the raw token returned at creation:
+
+```bash
 curl -X POST http://localhost:3001/ingest/events \
   -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{
     "events": [{
+      "eventId": "demo-event-001",
       "provider": "openai",
       "endpoint": "/v1/chat/completions",
       "method": "POST",
       "statusCode": 200,
       "latencyMs": 450,
-      "ts": "'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"
+      "ts": "2026-07-12T09:41:27.123Z"
     }]
   }'
-
-# 4. Check queue stats
-curl http://localhost:3001/ingest/queue-stats
-
-# 5. View metrics
-curl "http://localhost:3001/metrics/volume?projectId=<uuid>&from=2024-01-01T00:00:00Z&to=2024-12-31T23:59:59Z"
 ```
 
-## API Reference
+`eventId` is optional at validation time but strongly recommended: it is the idempotency key that prevents duplicate delivery from inflating metrics.
 
-### Ingest API (requires Bearer token auth)
+## API surface
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/ingest/events` | Ingest batch of events (max 500) |
-| GET | `/ingest/queue-stats` | Queue health stats |
+| Method | Path | Authentication | Purpose |
+|---|---|---|---|
+| `GET` | `/health` | None | Backward-compatible liveness response |
+| `GET` | `/health/live` | None | Process liveness |
+| `GET` | `/health/ready` | None | PostgreSQL and Redis readiness |
+| `GET` | `/projects` | None | List projects |
+| `POST` | `/projects` | None | Create a project |
+| `GET` | `/projects/:id` | None | Read a project |
+| `GET` | `/projects/:id/tokens` | None | List token metadata |
+| `POST` | `/projects/:id/tokens` | None | Create an ingest token |
+| `POST` | `/ingest/events` | Bearer token | Validate and enqueue 1–500 events |
+| `GET` | `/ingest/queue-stats` | Bearer token | Read BullMQ job counts |
+| `GET` | `/metrics/volume` | None | Request counts by minute and endpoint |
+| `GET` | `/metrics/errors` | None | Errors, 429s, and error rates |
+| `GET` | `/metrics/latency` | None | Weighted-latency inputs |
+| `GET` | `/metrics/top-endpoints` | None | Top 20 endpoints for a time range |
 
-### Projects API
+Metrics routes require `projectId`, ISO-8601 `from`, and ISO-8601 `to`. Reversed time ranges are rejected. `provider` is optional.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/projects` | List all projects |
-| POST | `/projects` | Create project |
-| GET | `/projects/:id` | Get project |
-| GET | `/projects/:id/tokens` | List tokens |
-| POST | `/projects/:id/tokens` | Create token |
+Project management and metrics reads are intentionally unauthenticated in this local demonstration. Do not expose the API publicly without user authentication and project-level authorization.
 
-### Metrics API
+## Event contract
 
-| Method | Path | Query Params |
-|--------|------|-------------|
-| GET | `/metrics/volume` | projectId, from, to, provider? |
-| GET | `/metrics/errors` | projectId, from, to, provider? |
-| GET | `/metrics/latency` | projectId, from, to, provider? |
-| GET | `/metrics/top-endpoints` | projectId, from, to, provider? |
-
-## Event Schema
-
-```typescript
+```json
 {
-  eventId?: string;        // Optional: for deduplication
-  provider: string;        // e.g. "openai", "stripe", "github"
-  endpoint: string;        // e.g. "/v1/chat/completions"
-  method: string;          // HTTP method
-  statusCode: number;      // HTTP status code (100-599)
-  latencyMs: number;       // Response latency in milliseconds
-  ts: string;              // ISO 8601 timestamp
-  rateLimitRemaining?: number;  // Optional: from rate limit headers
+  "eventId": "provider-request-id",
+  "provider": "openai",
+  "endpoint": "/v1/chat/completions",
+  "method": "POST",
+  "statusCode": 200,
+  "latencyMs": 450,
+  "ts": "2026-07-12T09:41:27.123Z",
+  "rateLimitRemaining": 987
 }
 ```
 
-## Project Structure
+| Field | Validation |
+|---|---|
+| `eventId` | Optional string; recommended for retry safety |
+| `provider` | Non-empty string |
+| `endpoint` | Non-empty string |
+| `method` | Non-empty string |
+| `statusCode` | Integer from 100 through 599 |
+| `latencyMs` | Non-negative integer |
+| `ts` | ISO-8601 timestamp |
+| `rateLimitRemaining` | Optional non-negative integer |
 
-```
-rate_snoop/
-├── apps/
-│   ├── api/              NestJS API (ingestion + dashboard reads)
-│   │   ├── src/
-│   │   │   ├── modules/
-│   │   │   │   ├── auth/       Token-based authentication
-│   │   │   │   ├── ingest/     Event ingestion + BullMQ enqueueing
-│   │   │   │   ├── metrics/    Dashboard read APIs
-│   │   │   │   └── projects/   Project & token management
-│   │   │   └── scripts/
-│   │   │       └── seed.ts     Load generator script
-│   ├── worker/           NestJS Worker (queue consumer)
-│   │   └── src/
-│   │       └── processors/
-│   │           ├── events.processor.ts    BullMQ processor
-│   │           └── aggregation.service.ts  Core aggregation logic
-│   └── web/              Next.js 14 App Router frontend
-│       └── src/
-│           ├── app/      Pages (/, /projects/[id], /projects/[id]/settings)
-│           ├── components/charts/  Recharts components
-│           └── lib/      API client, utilities
-├── packages/
-│   ├── db/               Drizzle ORM schema + client
-│   └── types/            Shared TypeScript types
-├── docker-compose.yml      Full stack
-├── docker-compose.dev.yml  Dev infra only
-└── turbo.json
+## Verification
+
+Run the same quality gates used before container smoke tests:
+
+```bash
+pnpm verify
 ```
 
-## Key Implementation Details
+Or run them independently:
 
-### Event Deduplication
-Events with an `eventId` are deduplicated: if a `(project_id, event_id)` pair already exists in `api_events`, the event is skipped.
-
-### Endpoint Normalization
-Endpoints are normalized before aggregation — path segments that look like IDs (UUIDs, integers, Stripe-format IDs, hex strings) are replaced with `:id`:
-- `/users/123/posts` → `/users/:id/posts`
-- `/v1/customers/cust_abc123` → `/v1/customers/:id`
-
-### Aggregate UPSERT
-Minute aggregates are upserted with a weighted average for latency:
-```sql
-avg_latency_ms = (old_avg * old_count + new_avg * new_count) / (old_count + new_count)
+```bash
+pnpm lint
+pnpm type-check
+pnpm test
+pnpm build
 ```
 
-### Auth
-Tokens are hashed with SHA-256 (not bcrypt) for fast lookup performance. Raw tokens are only shown once at creation time.
+## Repository structure
 
-### Queue Backpressure
-If the BullMQ queue depth exceeds 10,000 jobs, the ingest endpoint returns HTTP 429.
+```text
+apps/
+  api/       NestJS ingestion, project, token, metrics, and probe endpoints
+  worker/    BullMQ consumer and transactional aggregation
+  web/       Next.js dashboard
+packages/
+  db/        Drizzle schema, SQL migration, and database client
+  types/     Shared wire contracts
+docs/
+  design-notes.md
+```
 
-## Environment Variables
+## Current boundaries
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/rate_snoop` | PostgreSQL connection string |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
-| `PORT` | `3001` / `3002` | App listen port |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:3001` | API URL for the browser |
+- No end-user authentication or project-level authorization.
+- No separate dead-letter queue or automated failed-job replay policy.
+- Backpressure is an approximate admission check, not an atomic distributed quota.
+- Events without `eventId` are not idempotent under redelivery.
+- No retention, partitioning, reconciliation, or long-term capacity policy.
+- Production Redis durability, TLS, secrets, and deployment manifests are out of scope.
+
+These limitations are explicit because reliability claims are only useful when their boundary conditions are visible.

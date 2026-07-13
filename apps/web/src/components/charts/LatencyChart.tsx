@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { LatencyDataPoint } from '@rate-snoop/types';
-import { formatTime } from '@/lib/utils';
+import { aggregateLatencyByBucket } from '@/lib/metrics';
 import { ChartSkeleton } from './ChartSkeleton';
 import { useMemo } from 'react';
 
@@ -21,27 +21,7 @@ interface Props {
 
 export function LatencyChart({ data, loading }: Props) {
   const chartData = useMemo(() => {
-    const bucketMap = new Map<string, { time: string; totalLatency: number; count: number }>();
-
-    for (const d of data) {
-      if (!bucketMap.has(d.bucketStart)) {
-        bucketMap.set(d.bucketStart, {
-          time: formatTime(d.bucketStart),
-          totalLatency: 0,
-          count: 0,
-        });
-      }
-      const bucket = bucketMap.get(d.bucketStart)!;
-      bucket.totalLatency += d.avgLatencyMs;
-      bucket.count++;
-    }
-
-    return Array.from(bucketMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, v]) => ({
-        time: v.time,
-        avgLatencyMs: v.count > 0 ? Math.round(v.totalLatency / v.count) : 0,
-      }));
+    return aggregateLatencyByBucket(data);
   }, [data]);
 
   if (loading) return <ChartSkeleton />;

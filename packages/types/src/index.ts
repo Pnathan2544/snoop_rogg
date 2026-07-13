@@ -1,45 +1,11 @@
 // ============================================================
-// Core Domain Types
+// API Response Types
 // ============================================================
 
 export interface Project {
   id: string;
   name: string;
-  createdAt: Date;
-}
-
-export interface IngestToken {
-  id: string;
-  projectId: string;
-  tokenHash: string;
-  name: string;
-  createdAt: Date;
-  lastUsedAt: Date | null;
-}
-
-export interface ApiEvent {
-  id: string;
-  projectId: string;
-  eventId: string | null;
-  provider: string;
-  endpoint: string;
-  method: string;
-  statusCode: number;
-  latencyMs: number;
-  ts: Date;
-  rateLimitRemaining: number | null;
-  createdAt: Date;
-}
-
-export interface MinuteAggregate {
-  projectId: string;
-  bucketStart: Date;
-  provider: string;
-  endpointGroup: string;
-  requestCount: number;
-  errorCount: number;
-  count429: number;
-  avgLatencyMs: number;
+  createdAt: string;
 }
 
 // ============================================================
@@ -58,7 +24,6 @@ export interface IngestEventDto {
 }
 
 export interface IngestBatchDto {
-  projectId: string;
   events: IngestEventDto[];
 }
 
@@ -91,6 +56,7 @@ export interface ErrorDataPoint {
   endpointGroup: string;
   errorCount: number;
   count429: number;
+  requestCount: number;
   errorRate: number;
 }
 
@@ -99,6 +65,7 @@ export interface LatencyDataPoint {
   provider: string;
   endpointGroup: string;
   avgLatencyMs: number;
+  requestCount: number;
 }
 
 export interface TopEndpointDataPoint {
@@ -126,7 +93,7 @@ export interface TokenCreatedDto {
   id: string;
   name: string;
   token: string; // raw token - only shown once
-  createdAt: Date;
+  createdAt: string;
 }
 
 // ============================================================

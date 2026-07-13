@@ -14,7 +14,6 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (!url) {
       throw new Error('DATABASE_URL environment variable is not set');
     }
-    this.logger.log(`Connecting to: ${url}`);
     this.client = postgres(url, {
       max: 10,
       idle_timeout: 20,

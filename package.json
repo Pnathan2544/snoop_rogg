@@ -8,6 +8,11 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "type-check": "turbo run type-check",
+    "verify": "pnpm lint && pnpm type-check && pnpm test && pnpm build",
+    "infra:up": "docker compose -f docker-compose.dev.yml up -d",
+    "infra:down": "docker compose -f docker-compose.dev.yml down",
+    "stack:up": "docker compose up --build -d",
+    "stack:down": "docker compose down",
     "db:generate": "turbo run db:generate",
     "db:migrate": "turbo run db:migrate",
     "db:push": "turbo run db:push"

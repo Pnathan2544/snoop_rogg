@@ -13,6 +13,7 @@ services:
       - '5434:5432'
     volumes:
       - postgres_dev_data:/var/lib/postgresql/data
+      - ./packages/db/drizzle/0000_initial_schema.sql:/docker-entrypoint-initdb.d/0000_initial_schema.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d rate_snoop']
       interval: 5s

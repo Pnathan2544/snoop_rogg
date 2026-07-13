@@ -117,7 +117,7 @@ export default function HomePage() {
                 <div>
                   <h3 className="font-semibold text-slate-900 text-lg">{project.name}</h3>
                   <p className="text-slate-400 text-sm mt-1">
-                    Created {formatDateTime(project.createdAt.toString())}
+                    Created {formatDateTime(project.createdAt)}
                   </p>
                 </div>
                 <span className="badge bg-green-100 text-green-800">Active</span>

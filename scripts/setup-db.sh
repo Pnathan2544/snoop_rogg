@@ -4,7 +4,7 @@
 
 set -e
 
-DATABASE_URL=${DATABASE_URL:-"postgresql://postgres:postgres@localhost:5432/rate_snoop"}
+DATABASE_URL=${DATABASE_URL:-"postgresql://postgres:postgres@localhost:5434/rate_snoop"}
 
 echo "Running migrations against: $DATABASE_URL"
 
