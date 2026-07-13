@@ -9,7 +9,8 @@
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
     "type-check": "tsc --noEmit",
-    "seed": "ts-node -r tsconfig-paths/register src/scripts/seed.ts"
+    "seed": "ts-node -r tsconfig-paths/register src/scripts/seed.ts",
+    "seed:smoke": "ts-node -r tsconfig-paths/register src/scripts/seed.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^10.2.3",
