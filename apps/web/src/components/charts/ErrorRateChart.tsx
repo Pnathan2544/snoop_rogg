@@ -11,7 +11,7 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { ErrorDataPoint } from '@rate-snoop/types';
-import { formatTime } from '@/lib/utils';
+import { aggregateErrorRateByBucket } from '@/lib/metrics';
 import { ChartSkeleton } from './ChartSkeleton';
 import { useMemo } from 'react';
 
@@ -22,40 +22,7 @@ interface Props {
 
 export function ErrorRateChart({ data, loading }: Props) {
   const chartData = useMemo(() => {
-    const bucketMap = new Map<string, { time: string; errorRate: number; errors: number; requests: number }>();
-
-    for (const d of data) {
-      if (!bucketMap.has(d.bucketStart)) {
-        bucketMap.set(d.bucketStart, {
-          time: formatTime(d.bucketStart),
-          errorRate: 0,
-          errors: 0,
-          requests: 0,
-        });
-      }
-      const bucket = bucketMap.get(d.bucketStart)!;
-      bucket.errors += d.errorCount;
-      // requestCount is available through errorRate calculation
-    }
-
-    // Since errorRate is already pre-computed as percentage
-    const directMap = new Map<string, { time: string; errorRate: number }>();
-    for (const d of data) {
-      if (!directMap.has(d.bucketStart)) {
-        directMap.set(d.bucketStart, {
-          time: formatTime(d.bucketStart),
-          errorRate: d.errorRate,
-        });
-      } else {
-        // Average error rates
-        const existing = directMap.get(d.bucketStart)!;
-        existing.errorRate = (existing.errorRate + d.errorRate) / 2;
-      }
-    }
-
-    return Array.from(directMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, v]) => ({ ...v, errorRate: parseFloat(v.errorRate.toFixed(1)) }));
+    return aggregateErrorRateByBucket(data);
   }, [data]);
 
   if (loading) return <ChartSkeleton />;

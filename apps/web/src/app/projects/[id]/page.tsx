@@ -16,6 +16,7 @@ import { ErrorRateChart } from '@/components/charts/ErrorRateChart';
 import { RateLimitChart } from '@/components/charts/RateLimitChart';
 import { LatencyChart } from '@/components/charts/LatencyChart';
 import { TopEndpointsTable } from '@/components/charts/TopEndpointsTable';
+import { weightedAverageLatency } from '@/lib/metrics';
 
 type TimeRange = '1h' | '6h' | '24h' | '7d';
 
@@ -67,6 +68,8 @@ export default function ProjectDashboardPage() {
     queryFn: () => fetchTopEndpoints(metricsParams),
     refetchInterval: 30000,
   });
+
+  const averageLatency = weightedAverageLatency(latencyData);
 
   if (projectLoading) {
     return (
@@ -136,8 +139,8 @@ export default function ProjectDashboardPage() {
         <StatCard
           label="Avg Latency"
           value={
-            latencyData.length > 0
-              ? `${Math.round(latencyData.reduce((sum, d) => sum + d.avgLatencyMs, 0) / latencyData.length)}ms`
+            averageLatency !== null
+              ? `${averageLatency}ms`
               : '—'
           }
           loading={latencyLoading}

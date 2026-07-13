@@ -10,7 +10,7 @@ import {
   ResponsiveContainer,
 } from 'recharts';
 import { VolumeDataPoint } from '@rate-snoop/types';
-import { formatTime } from '@/lib/utils';
+import { aggregateVolumeByBucket } from '@/lib/metrics';
 import { ChartSkeleton } from './ChartSkeleton';
 import { useMemo } from 'react';
 
@@ -22,20 +22,7 @@ interface Props {
 export function VolumeChart({ data, loading }: Props) {
   // Aggregate by time bucket, sum across providers/endpoints
   const chartData = useMemo(() => {
-    const bucketMap = new Map<string, Record<string, number>>();
-
-    for (const d of data) {
-      const time = formatTime(d.bucketStart);
-      if (!bucketMap.has(d.bucketStart)) {
-        bucketMap.set(d.bucketStart, { time: time as unknown as number, total: 0 });
-      }
-      const bucket = bucketMap.get(d.bucketStart)!;
-      bucket.total = (bucket.total as number) + d.requestCount;
-    }
-
-    return Array.from(bucketMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([, v]) => v);
+    return aggregateVolumeByBucket(data);
   }, [data]);
 
   if (loading) return <ChartSkeleton />;
