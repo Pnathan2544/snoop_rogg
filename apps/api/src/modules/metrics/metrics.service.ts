@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { minuteAggregates } from '@rate-snoop/db';
 import { and, eq, gte, lte, desc, sql } from 'drizzle-orm';
@@ -6,15 +6,20 @@ import { MetricsQueryDto } from './metrics.dto';
 
 @Injectable()
 export class MetricsService {
-  private readonly logger = new Logger(MetricsService.name);
-
   constructor(private readonly dbService: DatabaseService) {}
 
   private buildBaseConditions(query: MetricsQueryDto) {
+    const from = new Date(query.from);
+    const to = new Date(query.to);
+
+    if (from > to) {
+      throw new BadRequestException('from must be earlier than or equal to to');
+    }
+
     const conditions = [
       eq(minuteAggregates.projectId, query.projectId),
-      gte(minuteAggregates.bucketStart, new Date(query.from)),
-      lte(minuteAggregates.bucketStart, new Date(query.to)),
+      gte(minuteAggregates.bucketStart, from),
+      lte(minuteAggregates.bucketStart, to),
     ];
 
     if (query.provider) {
@@ -66,6 +71,7 @@ export class MetricsService {
       endpointGroup: r.endpointGroup,
       errorCount: r.errorCount,
       count429: r.count429,
+      requestCount: r.requestCount,
       errorRate: r.requestCount > 0 ? (r.errorCount / r.requestCount) * 100 : 0,
     }));
   }
@@ -79,6 +85,7 @@ export class MetricsService {
         provider: minuteAggregates.provider,
         endpointGroup: minuteAggregates.endpointGroup,
         avgLatencyMs: minuteAggregates.avgLatencyMs,
+        requestCount: minuteAggregates.requestCount,
       })
       .from(minuteAggregates)
       .where(and(...conditions))

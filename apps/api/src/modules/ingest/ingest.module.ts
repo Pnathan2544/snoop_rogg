@@ -1,5 +1,5 @@
 import { Module, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { IngestController } from './ingest.controller';
 import { IngestService } from './ingest.service';
 import { AuthModule } from '../auth/auth.module';
@@ -14,6 +14,7 @@ import { AuthMiddleware } from '../auth/auth.middleware';
   ],
   controllers: [IngestController],
   providers: [IngestService],
+  exports: [BullModule],
 })
 export class IngestModule {
   configure(consumer: MiddlewareConsumer) {

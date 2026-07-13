@@ -8,6 +8,7 @@ import {
   Min,
   Max,
   ArrayMaxSize,
+  ArrayMinSize,
   IsNotEmpty,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -50,6 +51,7 @@ export class IngestEventDto {
 export class IngestBatchDto {
   @IsArray()
   @ValidateNested({ each: true })
+  @ArrayMinSize(1)
   @ArrayMaxSize(500)
   @Type(() => IngestEventDto)
   events!: IngestEventDto[];

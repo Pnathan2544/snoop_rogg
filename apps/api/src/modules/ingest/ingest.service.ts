@@ -4,8 +4,8 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
-import { InjectQueue } from '@nestjs/bull';
-import { Queue } from 'bull';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { IngestBatchDto } from './ingest.dto';
 import { EventBatchJob } from '@rate-snoop/types';
 
@@ -24,9 +24,14 @@ export class IngestService {
     projectId: string,
     dto: IngestBatchDto,
   ): Promise<{ accepted: number; queued: boolean }> {
-    // Check queue depth
-    const queueDepth = await this.eventsQueue.count();
-    if (queueDepth > QUEUE_DEPTH_LIMIT) {
+    const [waiting, active, delayed] = await Promise.all([
+      this.eventsQueue.getWaitingCount(),
+      this.eventsQueue.getActiveCount(),
+      this.eventsQueue.getDelayedCount(),
+    ]);
+    const queueDepth = waiting + active + delayed;
+
+    if (queueDepth >= QUEUE_DEPTH_LIMIT) {
       this.logger.warn(`Queue overloaded (depth: ${queueDepth}), rejecting batch`);
       throw new HttpException(
         {
@@ -44,7 +49,7 @@ export class IngestService {
       enqueuedAt: new Date().toISOString(),
     };
 
-    await this.eventsQueue.add(job, {
+    await this.eventsQueue.add('event-batch', job, {
       attempts: 3,
       backoff: {
         type: 'exponential',
