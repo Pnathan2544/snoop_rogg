@@ -6,7 +6,7 @@ describe('@rate-snoop/types public exports', () => {
     expectTypeOf<Project>().toMatchTypeOf<{
       id: string;
       name: string;
-      createdAt: Date;
+      createdAt: string;
     }>();
 
     expectTypeOf<IngestEventDto>().toMatchTypeOf<{
