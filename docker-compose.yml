@@ -10,6 +10,7 @@ services:
       - '5432:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./packages/db/drizzle/0000_initial_schema.sql:/docker-entrypoint-initdb.d/0000_initial_schema.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres -d rate_snoop']
       interval: 5s
@@ -46,6 +47,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3001/health/ready').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   worker:
     build:
@@ -64,6 +70,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://localhost:3002/health/ready').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   web:
     build:
@@ -76,7 +87,8 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:3001
       NODE_ENV: production
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
 volumes:
   postgres_data:
