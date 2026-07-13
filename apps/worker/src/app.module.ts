@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { BullModule } from '@nestjs/bull';
+import { BullModule } from '@nestjs/bullmq';
 import { EventsProcessorModule } from './processors/events-processor.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthController } from './health.controller';
@@ -12,7 +12,9 @@ import { HealthController } from './health.controller';
       envFilePath: ['.env', '../../.env'],
     }),
     BullModule.forRoot({
-      redis: process.env.REDIS_URL || 'redis://localhost:6379',
+      connection: {
+        url: process.env.REDIS_URL || 'redis://localhost:6379',
+      },
     }),
     DatabaseModule,
     EventsProcessorModule,

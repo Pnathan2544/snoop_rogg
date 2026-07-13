@@ -1,20 +1,21 @@
-import { Processor, Process, OnQueueFailed, OnQueueCompleted } from '@nestjs/bull';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { Job } from 'bull';
+import { Job } from 'bullmq';
 import { EventBatchJob } from '@rate-snoop/types';
 import { AggregationService } from './aggregation.service';
 
-@Processor('events')
-export class EventsProcessor {
+@Processor('events', { concurrency: 3 })
+export class EventsProcessor extends WorkerHost {
   private readonly logger = new Logger(EventsProcessor.name);
   private processedCount = 0;
   private errorCount = 0;
   private startTime = Date.now();
 
-  constructor(private readonly aggregationService: AggregationService) {}
+  constructor(private readonly aggregationService: AggregationService) {
+    super();
+  }
 
-  @Process({ concurrency: 3 })
-  async processEventBatch(job: Job<EventBatchJob>): Promise<void> {
+  async process(job: Job<EventBatchJob>): Promise<void> {
     const { projectId, events, enqueuedAt } = job.data;
 
     const queueLatencyMs = Date.now() - new Date(enqueuedAt).getTime();
@@ -28,14 +29,22 @@ export class EventsProcessor {
     this.logThroughputMetrics();
   }
 
-  @OnQueueCompleted()
+  @OnWorkerEvent('completed')
   onCompleted(job: Job<EventBatchJob>): void {
     this.logger.debug(`Job ${job.id} completed successfully`);
   }
 
-  @OnQueueFailed()
-  onFailed(job: Job<EventBatchJob>, error: Error): void {
+  @OnWorkerEvent('failed')
+  onFailed(job: Job<EventBatchJob> | undefined, error: Error): void {
     this.errorCount++;
+
+    if (!job) {
+      this.logger.error(
+        `Worker failed without job context: ${error.message}`,
+        error.stack,
+      );
+      return;
+    }
     this.logger.error(
       `Job ${job.id} failed (attempt ${job.attemptsMade}/${job.opts.attempts}): ${error.message}`,
       error.stack,
@@ -43,7 +52,7 @@ export class EventsProcessor {
 
     if (job.attemptsMade >= (job.opts.attempts ?? 3)) {
       this.logger.error(
-        `Job ${job.id} moved to dead letter queue after ${job.attemptsMade} attempts`,
+        `Job ${job.id} exhausted retries and remains in BullMQ's failed job set`,
       );
     }
   }

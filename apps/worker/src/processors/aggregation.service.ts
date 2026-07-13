@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { apiEvents, NewApiEvent } from '@rate-snoop/db';
+import type { DrizzleDb } from '@rate-snoop/db';
 import { IngestEventDto } from '@rate-snoop/types';
-import { sql, and, eq, inArray } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 interface AggregateKey {
   projectId: string;
@@ -18,12 +19,19 @@ interface AggregateValue {
   totalLatencyMs: number;
 }
 
+type AggregatableEvent = Pick<
+  IngestEventDto,
+  'provider' | 'endpoint' | 'statusCode' | 'latencyMs'
+> & { ts: string | Date };
+
+type DatabaseTransaction = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
+
 /**
  * Normalizes an endpoint path by replacing ID-like segments with :id
  * Examples:
  *   /users/123/posts        -> /users/:id/posts
  *   /v1/customers/cust_abc  -> /v1/customers/:id
- *   /repos/owner/name       -> /repos/:id/:id  (short non-uuid strings kept)
+ *   /repos/owner/name       -> /repos/owner/name
  */
 export function normalizeEndpoint(endpoint: string): string {
   return endpoint
@@ -59,6 +67,22 @@ export function floorToMinute(date: Date): Date {
   return d;
 }
 
+/**
+ * Keep the first occurrence of an event ID within a batch. Events without an
+ * ID cannot be safely deduplicated and are therefore retained.
+ */
+export function deduplicateBatch(events: IngestEventDto[]): IngestEventDto[] {
+  const seenEventIds = new Set<string>();
+
+  return events.filter((event) => {
+    if (!event.eventId) return true;
+    if (seenEventIds.has(event.eventId)) return false;
+
+    seenEventIds.add(event.eventId);
+    return true;
+  });
+}
+
 @Injectable()
 export class AggregationService {
   private readonly logger = new Logger(AggregationService.name);
@@ -68,43 +92,8 @@ export class AggregationService {
   async processEvents(projectId: string, events: IngestEventDto[]): Promise<void> {
     if (events.length === 0) return;
 
-    // ---- Step 1: Deduplicate by event_id ----
-    const eventsWithId = events.filter((e) => e.eventId);
-    let dedupedEvents = events;
-
-    if (eventsWithId.length > 0) {
-      const eventIds = eventsWithId.map((e) => e.eventId as string);
-
-      // Check which event_ids already exist
-      const existingRows = await this.dbService.db
-        .select({ eventId: apiEvents.eventId })
-        .from(apiEvents)
-        .where(
-          and(
-            eq(apiEvents.projectId, projectId),
-            inArray(apiEvents.eventId, eventIds),
-          ),
-        );
-
-      const existingEventIds = new Set(existingRows.map((r) => r.eventId));
-
-      dedupedEvents = events.filter(
-        (e) => !e.eventId || !existingEventIds.has(e.eventId),
-      );
-
-      const skipped = events.length - dedupedEvents.length;
-      if (skipped > 0) {
-        this.logger.debug(`Deduped ${skipped} events for project ${projectId}`);
-      }
-    }
-
-    if (dedupedEvents.length === 0) {
-      this.logger.debug('All events were duplicates, skipping');
-      return;
-    }
-
-    // ---- Step 2: Bulk insert raw events ----
-    const rows: NewApiEvent[] = dedupedEvents.map((e) => ({
+    const candidateEvents = deduplicateBatch(events);
+    const rows: NewApiEvent[] = candidateEvents.map((e) => ({
       projectId,
       eventId: e.eventId ?? null,
       provider: e.provider,
@@ -116,23 +105,56 @@ export class AggregationService {
       rateLimitRemaining: e.rateLimitRemaining ?? null,
     }));
 
-    // Insert in chunks of 100 to avoid parameter limit
-    const chunkSize = 100;
-    for (let i = 0; i < rows.length; i += chunkSize) {
-      const chunk = rows.slice(i, i + chunkSize);
-      await this.dbService.db.insert(apiEvents).values(chunk);
-    }
+    const insertedCount = await this.dbService.db.transaction(async (tx) => {
+      const insertedEvents: AggregatableEvent[] = [];
+      const chunkSize = 100;
 
-    this.logger.debug(`Inserted ${rows.length} raw events for project ${projectId}`);
+      for (let i = 0; i < rows.length; i += chunkSize) {
+        const chunk = rows.slice(i, i + chunkSize);
+        const inserted = await tx
+          .insert(apiEvents)
+          .values(chunk)
+          .onConflictDoNothing()
+          .returning({
+            provider: apiEvents.provider,
+            endpoint: apiEvents.endpoint,
+            statusCode: apiEvents.statusCode,
+            latencyMs: apiEvents.latencyMs,
+            ts: apiEvents.ts,
+          });
 
-    // ---- Step 3: Compute minute aggregates ----
+        insertedEvents.push(...inserted);
+      }
+
+      if (insertedEvents.length === 0) return 0;
+
+      await this.upsertAggregates(tx, projectId, insertedEvents);
+      return insertedEvents.length;
+    });
+
+    const skipped = events.length - insertedCount;
+    this.logger.debug(
+      `Persisted ${insertedCount} events and skipped ${skipped} duplicates for project ${projectId}`,
+    );
+  }
+
+  private async upsertAggregates(
+    tx: DatabaseTransaction,
+    projectId: string,
+    events: AggregatableEvent[],
+  ): Promise<void> {
     const aggMap = new Map<string, AggregateValue>();
     const keyMap = new Map<string, AggregateKey>();
 
-    for (const event of dedupedEvents) {
+    for (const event of events) {
       const bucketStart = floorToMinute(new Date(event.ts));
       const endpointGroup = normalizeEndpoint(event.endpoint);
-      const key = `${projectId}|${bucketStart.toISOString()}|${event.provider}|${endpointGroup}`;
+      const key = JSON.stringify([
+        projectId,
+        bucketStart.toISOString(),
+        event.provider,
+        endpointGroup,
+      ]);
 
       if (!aggMap.has(key)) {
         aggMap.set(key, {
@@ -156,12 +178,11 @@ export class AggregationService {
       if (event.statusCode === 429) agg.count429++;
     }
 
-    // ---- Step 4: UPSERT into minute_aggregates ----
     for (const [key, agg] of aggMap.entries()) {
       const keyData = keyMap.get(key)!;
       const avgLatencyMs = agg.totalLatencyMs / agg.requestCount;
 
-      await this.dbService.db.execute(sql`
+      await tx.execute(sql`
         INSERT INTO minute_aggregates
           (project_id, bucket_start, provider, endpoint_group, request_count, error_count, count_429, avg_latency_ms)
         VALUES (
