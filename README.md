@@ -31,6 +31,8 @@ See [Design notes](docs/design-notes.md) for invariants, delivery semantics, fai
 - Request-weighted latency and error-rate calculations.
 - Separate liveness and dependency-aware readiness probes.
 - Docker Compose development and complete-stack configurations.
+- Provider-aware, deterministic real-time traffic simulation for dashboard demos.
+- A root Makefile for setup, development, verification, and operations.
 - CI for lint, type-check, tests, builds, container builds, and smoke checks.
 
 ## Technology
@@ -42,15 +44,18 @@ See [Design notes](docs/design-notes.md) for invariants, delivery semantics, fai
 | Queue | BullMQ 5, Redis | Buffering, retries, distributed job delivery |
 | Worker | NestJS, BullMQ WorkerHost | Raw persistence and minute aggregation |
 | Database | PostgreSQL, Drizzle ORM | Projects, token hashes, events, aggregates |
-| Tooling | pnpm, Turborepo, Docker Compose, Vitest | Workspace orchestration and verification |
+| Tooling | GNU Make, pnpm, Turborepo, Docker Compose, Vitest | Workspace orchestration and verification |
 
 ## Quick start
 
 ### Prerequisites
 
 - Node.js 20+
-- pnpm 9
+- Corepack (included with supported Node.js releases)
 - Docker with Docker Compose
+- GNU Make 4+ (recommended; available through Git Bash, WSL, Scoop, or Chocolatey on Windows)
+
+The Makefile creates a workspace-local pnpm 9 shim, so a global pnpm installation is not required.
 
 ### Development mode
 
@@ -58,9 +63,8 @@ See [Design notes](docs/design-notes.md) for invariants, delivery semantics, fai
 git clone https://github.com/Pnathan2544/snoop_rogg.git
 cd snoop_rogg
 cp .env.example .env
-pnpm install
-pnpm infra:up
-pnpm dev
+make install
+make dev
 ```
 
 The development stack exposes:
@@ -78,45 +82,63 @@ For a new PostgreSQL volume, the initial schema is applied automatically from `p
 Stop the development infrastructure with:
 
 ```bash
-pnpm infra:down
+make infra-down
 ```
 
 ### Complete Docker stack
 
 ```bash
-pnpm stack:up
+make stack-up
 ```
 
 This builds and starts PostgreSQL, Redis, the API, worker, and dashboard. The web service waits for the API readiness probe before starting.
 
 ```bash
-pnpm stack:down
+make stack-down
 ```
 
-## Generate demo traffic
+Use `make help` to list all development, stack, database, quality, and traffic commands.
 
-With the applications running:
+## Generate realistic demo traffic
+
+With the complete Docker stack running:
 
 ```bash
-pnpm --filter @rate-snoop/api seed
+make seed
 ```
 
-The seed script creates a project and token, then sends a batch every second for 60 seconds. Configuration can be overridden:
+The real-time simulator creates a project and token, prints its direct dashboard URL, and produces coherent provider traffic for ten minutes by default. Providers only use their own endpoints and methods. Request arrival follows a jittered distribution, latency is endpoint-specific and skewed, and errors, retries, quotas, and HTTP 429 responses are correlated.
+
+Configure the run with portable Make variables:
 
 ```bash
-DURATION=15 BATCH_SIZE=10 pnpm --filter @rate-snoop/api seed
-PROJECT_ID=<uuid> TOKEN=<token> pnpm --filter @rate-snoop/api seed
+make seed DURATION=600 RPS=12 SCENARIO=normal SEED=42
+make seed DURATION=0 RPS=8 SCENARIO=mixed SEED=42
 ```
 
-On PowerShell:
+`DURATION=0` runs until interrupted. Available scenarios are:
 
-```powershell
-$env:DURATION = "15"
-$env:BATCH_SIZE = "10"
-pnpm --filter @rate-snoop/api seed
+| Scenario | Behavior |
+|---|---|
+| `normal` | Stable traffic with low baseline errors and rare throttling |
+| `bursty` | Short request spikes with elevated latency |
+| `rate-limit` | Reduced quotas and sustained throttling |
+| `degraded` | Rotating provider latency and 5xx degradation |
+| `mixed` | One-minute phases cycling through all behaviors |
+
+For a shorter three-minute dashboard demonstration:
+
+```bash
+make seed-fast
 ```
 
-Open the generated project in the dashboard. Data becomes visible after the worker processes the job and the dashboard performs its next 30-second poll.
+When running the applications locally instead of in the full Compose stack, use `make seed-local` with the same variables. The simulator waits for the worker queue to drain before exiting. Data becomes visible after the dashboard's next 30-second poll.
+
+The original uniform random generator remains available as a short ingestion smoke test:
+
+```bash
+corepack pnpm --filter @rate-snoop/api seed:smoke
+```
 
 ## Manual ingestion
 

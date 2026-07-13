@@ -5,8 +5,8 @@
  * Runs for 60 seconds, sending batches every second.
  *
  * Usage:
- *   pnpm --filter @rate-snoop/api seed
- *   API_URL=http://localhost:3001 TOKEN=your-token PROJECT_ID=uuid pnpm --filter @rate-snoop/api seed
+ *   pnpm --filter @rate-snoop/api seed:smoke
+ *   API_URL=http://localhost:3001 TOKEN=your-token PROJECT_ID=uuid pnpm --filter @rate-snoop/api seed:smoke
  */
 
 import axios from 'axios';
